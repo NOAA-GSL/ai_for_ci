@@ -1,0 +1,10 @@
+keras
+tensorflow-gpu
+pygrib
+zarr
+xarray
+seaborn
+requests
+pandas
+bs4
+pillow

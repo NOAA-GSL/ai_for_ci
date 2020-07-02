@@ -100,9 +100,7 @@ class generator(Sequence):
         return int(np.ceil(self.length / float(self.batch_size)))
 
     def __getitem__(self, idx):
-        #train = np.zeros((self.batch_size, 512,512,3*len(self.bands)), dtype=self.x.dtype)
-        #test = np.zeros((self.batch_size,512,512,self.y.shape[3]), dtype=self.y.dtype)
-
+      
         cutStart = idx * self.batch_size
         cutEnd = min((idx + 1) * self.batch_size, self.limit)
 
@@ -128,23 +126,6 @@ class generator(Sequence):
            for b in range(0, len(bands_wanted)):
                 band_indices.append(i*total_bands+bands_wanted[b])
    
-        #print (" band indices: ", band_indices)
-   
-        #tmptrain = train[:,150:-150,150:-150,band_indices]
-        #tmptest = test[:,150:-150,150:-150,:]
-   
-        #train = np.zeros((tmptrain.shape[0],512,512,tmptrain.shape[3]), dtype=tmptrain.dtype)
-        #test = np.zeros((tmptest.shape[0],512,512,tmptest.shape[3]), dtype=tmptest.dtype)
-   
-        #for i in range(0, train.shape[0]):
-        #    for c in range(0, train.shape[3]):
-        #       train[i,:,:,c] = np.array(Image.fromarray(tmptrain[i,:,:,c]).resize((512, 512), Image.LANCZOS))
-        #    for c in range(0, test.shape[3]):
-        #       test[i,:,:,c] = np.array(Image.fromarray(tmptest[i,:,:,c]).resize((512, 512), Image.LANCZOS))
-   
-        #print ("shapes:: ", train.shape, " :: ", test.shape)
-   
-        # already resized
         train = train[:, :, :, band_indices]
         # reverse array, oldest at the begginning
         train = train[:, :, :, ::-1]
@@ -239,7 +220,6 @@ def main(lossfunction="tversky", lossrate=1e-4, depth=7, optimizer="rms", n_filt
       opt = Adam(lr=lossrate)
 
   model.compile(optimizer=opt, loss=loss, metrics=[tversky_coeff(alpha=0.3, beta=0.7), dice_coeff, 'accuracy'])
-  #model.compile(optimizer=Adam(lr=0.00001), loss=loss, metrics=[tversky_coeff, dice_coeff, 'accuracy'])
 
   if verbose > 0:
  
@@ -304,7 +284,6 @@ def main(lossfunction="tversky", lossrate=1e-4, depth=7, optimizer="rms", n_filt
     if not os.path.isdir("checkpoints"):
         os.makedirs("checkpoints")
     callbacks.append(keras.callbacks.ModelCheckpoint('./checkpoints/' + model_name + '_checkpoint-{epoch:02d}-{val_loss:.3f}.hdf5', monitor='val_loss', save_best_only=True, save_weights_only=True))
-    #callbacks.append(keras.callbacks.ModelCheckpoint('./checkpoints/' + model_name + '_checkpoint-{epoch}.h5'))
     #callbacks.append(keras.callbacks.TensorBoard(log_dir='tflogs'))
 
   size = 1

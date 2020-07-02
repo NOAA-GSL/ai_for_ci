@@ -22,8 +22,6 @@ import multiprocessing
 import argparse
 import zarr
 import sys
-from skimage.transform import resize
-
 
 import logging
 

@@ -295,14 +295,14 @@ def main(lossfunction="tversky", lossrate=1e-4, depth=7, optimizer="rms", n_filt
     val_bg.order = hvd.broadcast(val_bg.order, 0, name='val_bg_order').numpy()
     test_bg.order = hvd.broadcast(test_bg.order, 0, name='test_bg_order').numpy()
 
-  if not useHorovod or hvd.rank() == 0:
-     if not os.path.isdir("checkpoints"):
-        os.makedirs("checkpoints")
+  if verbose > 0:
      logger.info("Training size: %s : steps : %s", training_bg.length, (training_bg.length//batch_size))
      logger.info("Validation size: %s : steps : %s", val_bg.length, (val_bg.length//batch_size))
 
   # Horovod: save checkpoints only on the first worker to prevent other workers from corrupting them.
   if not useHorovod or hvd.rank() == 0:
+    if not os.path.isdir("checkpoints"):
+        os.makedirs("checkpoints")
     callbacks.append(keras.callbacks.ModelCheckpoint('./checkpoints/' + model_name + '_checkpoint-{epoch:02d}-{val_loss:.3f}.hdf5', monitor='val_loss', save_best_only=True, save_weights_only=True))
     #callbacks.append(keras.callbacks.ModelCheckpoint('./checkpoints/' + model_name + '_checkpoint-{epoch}.h5'))
     #callbacks.append(keras.callbacks.TensorBoard(log_dir='tflogs'))
@@ -323,7 +323,7 @@ def main(lossfunction="tversky", lossrate=1e-4, depth=7, optimizer="rms", n_filt
          workers=2,
          max_queue_size=8)
   
-  if verbose > 0:
+  if not useHorovod or hvd.rank() == 0:
      # serialize weights to HDF5
      logger.info("saving weights")
      if not os.path.isdir("weights"):

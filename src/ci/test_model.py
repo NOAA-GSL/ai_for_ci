@@ -14,24 +14,23 @@
 from keras.models import model_from_json
 
 import keras
+import argparse
+import os
+import sys
+
 from PIL import Image
 import numpy as np
-import os
 
 from process_data import processTimeBlock
 from process_data import processTime as processCurrent
-#from process_data import processTime as processCurrent
 import dateutil.parser
 from datetime import timedelta
-import argparse
 import matplotlib
 # Needed for headless matplotlib
 matplotlib.use("Agg")
 import matplotlib.cm as cm
-#from mpl_toolkits.basemap import Basemap
 
 import logging
-
 
 logging_format = '%(asctime)s - %(name)s - %(message)s'
 logging.root.setLevel(logging.INFO)
@@ -39,6 +38,7 @@ logging.basicConfig(level=logging.INFO,
     format=logging_format, datefmt='%Y-%m-%d %H:%M:%S')
 logger = logging.getLogger("TestModel")
 
+# setup labels colormap with transparency for overlay and 
 jet = cm.jet
 my_cmap = jet(np.arange(jet.N))
 my_cmap[:,-1] = 0.5
@@ -48,12 +48,16 @@ my_cmap[0,-1] = 0.15
 jet = matplotlib.colors.ListedColormap(my_cmap)
 jet.set_under([0,0,0,0])
 
-timeperiods = 3
+# dependent on input data
 total_bands = 7
 
-def getDataForBands(train, bands=[0,1,2,3,4,5,6]):
+model_name = ""
+
+def getDataForBands(train, timeperiods=3, total_bands=7, bands=[0,1,2,3,4,5,6]):
     bands_wanted = bands
     band_indices = []
+
+    # construct array of indices into data array for bands 
     for i in range(0,timeperiods):
         for b in range(0, len(bands_wanted)):
             band_indices.append(i*total_bands+bands_wanted[b])
@@ -65,164 +69,76 @@ def inference(model, validTime, bands, outdir="test", lead_time=90):
 
     print ('working on ', validTime)
     try:
-      train, testp, time = processTimeBlock(validTime, lead_time=lead_time)
-      current_sat, test, time = processCurrent(validTime)
-
-      if train is not None and test is not None:
-         train = getDataForBands(train, bands=bands)
-
-         print ("data: ", train.shape)
-         labelfile = validTime.strftime(outdir + "/labels-%Y-%m-%dT%H:%M:00.png")
+      # get block used for inference with a lead_time
+      logger.info("Getting block for inference")
+      train, testp, time = processTimeBlock(validTime, lead_time=lead_time, width=512, height=512)
      
-         sat1file = validTime.strftime(outdir + "/sat1-%Y-%m-%dT%H:%M:00.png")
-         sat2file = validTime.strftime(outdir + "/sat2-%Y-%m-%dT%H:%M:00.png")
-         sat3file = validTime.strftime(outdir + "/sat3-%Y-%m-%dT%H:%M:00.png")
+      # get observations at T
+      logger.info("Getting observations at T")
+      obs_sat, obs_rad, time = processCurrent(validTime, width=512, height=512)
+
+      if train is not None and obs_rad is not None:
+         logger.info("Reducing block to requested bands")
+         train = getDataForBands(train, timeperiods=3, bands=bands)
+         logger.info("   resulting data shape: %s", train.shape)
+
+         logger.info("Reducing obs to requested bands")
+         obs_sat = getDataForBands(obs_sat, timeperiods=1, bands=bands)
+         logger.info("   obs shape :: %s", obs_sat.shape)
+
+         labelfile = validTime.strftime(outdir + "/labels-%Y-%m-%dT%H:%M:00.png")
          truthfile = validTime.strftime(outdir + "/truth-%Y-%m-%dT%H:%M:00.png")
          predictfile = validTime.strftime(outdir + "/predict-%Y-%m-%dT%H:%M:00.png")
          combofile = validTime.strftime(outdir + "/combo-%Y-%m-%dT%H:%M:00.png")
-         combo2file = validTime.strftime(outdir + "/combo2-%Y-%m-%dT%H:%M:00.png")
-         combo3file = validTime.strftime(outdir + "/combo3-%Y-%m-%dT%H:%M:00.png")
-
-         #pfile = validTime.strftime(outdir + "pmapped-%Y-%m-%dT%H:%M:00.png")
-
-     
-         #tmptrain = train[:,150:-150,150:-150,:]
-         tmptest = test[:,150:-150,150:-150,:]
-         #tmptestp = testp[:,150:-150,150:-150,:]
-         current_sat = current_sat[:, 150:-150, 150:-150, :]
-
-         #train = np.zeros((tmptrain.shape[0],512,512,tmptrain.shape[3]), dtype=tmptrain.dtype)
-         test = np.zeros((tmptest.shape[0],512,512,tmptest.shape[3]), dtype=tmptest.dtype)
-         real    = np.zeros((current_sat.shape[0],512,512,current_sat.shape[3]), dtype=current_sat.dtype)
-         #testp = np.zeros((tmptestp.shape[0],512,512,tmptestp.shape[3]), dtype=tmptestp.dtype)
-
-
-         for i in range(0, train.shape[0]):
-             #for c in range(0, train.shape[3]):
-                #train[i,:,:,c] = np.array(Image.fromarray(tmptrain[i,:,:,c]).resize((512, 512), Image.LANCZOS))
-             for c in range(0, test.shape[3]):
-                test[i,:,:,c] = np.array(Image.fromarray(tmptest[i,:,:,c]).resize((512, 512), Image.LANCZOS))
-             #for c in range(0, testp.shape[3]):
-                #testp[i,:,:,c] = np.array(Image.fromarray(tmptestp[i,:,:,c]).resize((512, 512), Image.LANCZOS))
-             for c in range(0, current_sat.shape[3]):
-                real[i,:,:,c] = np.array(Image.fromarray(current_sat[i,:,:,c]).resize((512, 512), Image.LANCZOS))
-  #
-
-
-         print ("shapes:: ", train.shape, " :: ", test.shape)
-
-         sat1 = real[0,:,:,-1]
-         print ("min max: ", np.max(sat1), " :: ", np.min(sat1))
-         img = Image.fromarray(np.uint8(sat1))
-         img.save(sat1file)
-         #exit(-9)
-         satp = train[0,:,:,-1]
-         satp_img = Image.fromarray(np.uint8(satp))
-         sat2 = real[0,:,:,-1]
-         sat2_img = Image.fromarray(np.uint8(sat2))
-         sat2_img.save(sat2file)
-         sat3 = real[0,:,:,len(bands)]
-         sat3_img = Image.fromarray(np.uint8(sat3))
-         sat3_img.save(sat3file)
+ 
+         count = 0
+         for b in bands:
+            logger.info("creating image for sat band %s", b)
+            sat = obs_sat[0,:,:,count]
+            logger.info("min max for band %s: %s  ::  %s", b, np.max(sat), np.min(sat))
+            satlabel = "sat_band_" + str(b)
+            satfile = validTime.strftime(outdir + "/" + satlabel + "-%Y-%m-%dT%H:%M:00.png")
+            sat_img = Image.fromarray(np.uint8(sat))
+            sat_img.save(satfile)
+            count += 1
       
          train = (train-128.0)/255.0
-         print (validTime, " :: ", np.min(test), " :: ", np.max(test), " :: ", np.mean(test))
-         test[test<=35.0] = 0
-         print (validTime, " :: ", np.min(test), " :: ", np.max(test), " :: ", np.mean(test))
-         test[test>35] = 1
-         test = test.astype(np.uint8)
-         print (validTime, " :: ", np.min(test), " :: ", np.max(test), " :: ", np.mean(test))
+         logger.debug("%s :: %s :: %s :: %s", validTime, np.min(obs_rad), np.max(obs_rad), np.mean(obs_rad))
+         obs_rad[obs_rad<=35.0] = 0
+         logger.debug("%s :: %s :: %s :: %s", validTime, np.min(obs_rad), np.max(obs_rad), np.mean(obs_rad))
+         obs_rad[obs_rad>35] = 1
+         obs_rad = obs_rad.astype(np.uint8)
+         logger.debug("%s :: %s :: %s :: %s", validTime, np.min(obs_rad), np.max(obs_rad), np.mean(obs_rad))
 
-         labels = test[0,:,:,0]
-         print ("labels ", labels.dtype)
+         # generate labels image
+         labels = obs_rad[0,:,:,0]
          tmpdata = (labels*255).astype(np.uint8)
-         print ("tmpdata ", tmpdata.dtype)
          lab_img = Image.fromarray(jet(labels.astype(np.float32), bytes=True))
-         #img = toimage(labels.astype(np.float32))
          lab_img.save(labelfile)
      
+         # run model
          predict = model.predict(train)
-         #unique, counts = np.unique(predict, return_counts=True)
 
-         #print (np.asarray((unique, counts)).T)
-         #print (predict.shape, " :: ", (predict[(predict>0.0) & (predict<0.25)]).sum(), " :: ", (predict[(predict>0.5) & (predict<0.75)]).sum()," :: ", (predict==1).sum())
-     
-         #print ("data type: ", predict.dtype)
-         last_rad_img = Image.fromarray(jet((testp[0,:,:,0]*255).astype(np.uint8), bytes=True))
+         # generate predicted labels image
          pred_img = Image.fromarray(jet(predict[0,:,:,0], bytes=True))
-         #pred_img = Image.fromarray(jet((predict[0,:,:,0]*255).astype(np.uint8)))
          pred_img.save(predictfile)
 
-         sat2_img = sat2_img.convert('RGBA')
-         truth_img = Image.alpha_composite(sat2_img, lab_img)
+         # combine labels and observation into truth image
+         sat_img = sat_img.convert('RGBA')
+         truth_img = Image.alpha_composite(sat_img, lab_img)
          truth_img.save(truthfile)
 
-         predict_img = Image.alpha_composite(sat2_img, pred_img)
+         # combine predicted labels and observation into predict_image
+         predict_img = Image.alpha_composite(sat_img, pred_img)
 
-         satp_img = satp_img.convert('RGBA')
-         guess_img = Image.alpha_composite(satp_img, pred_img)
-         cur_img = Image.alpha_composite(satp_img, last_rad_img)
-
-         next_img = Image.alpha_composite(sat2_img, pred_img)
-         imgs_comb = np.vstack( (np.asarray(i) for i in [truth_img, next_img]))
+         # combine side by side truth and prediction
+         imgs_comb = np.hstack( (np.asarray(i) for i in [truth_img, predict_img]))
          imgs_comb = Image.fromarray( imgs_comb)
          imgs_comb.save(combofile)
 
-         imgs_comb1 = np.hstack( (np.asarray(i) for i in [cur_img, guess_img]))
-         imgs_comb1 = Image.fromarray( imgs_comb1)
-
-         imgs_comb2 = np.hstack( (np.asarray(i) for i in [truth_img, predict_img]))
-         imgs_comb2 = Image.fromarray( imgs_comb2)
-         imgs_comb2.save(combo3file)
-
-         imgs_comb = np.vstack( (np.asarray(i) for i in [imgs_comb1, imgs_comb2]))
-         imgs_comb = Image.fromarray( imgs_comb)
-
-         imgs_comb.save(combo2file)
-
-        
-
-         #img = Image.fromarray(jet(predict[0,:,:,0], bytes=True))
-
-         #fig = plt.figure(figsize=(width/300, width/300), dpi=300, frameon=False)
-         #m = Basemap(projection='merc',llcrnrlat=17.151,urcrnrlat=29.549,\
-         #         llcrnrlon=114.227, urcrnrlon=127.197, resolution='h')
-  #
-  #
-  #       x, y = m(xlons,xlats)
-  #       #x, y = m(lon_array, lat_array)
-  #       m.contourf(x,y, predict[0,:,:,0], cmap=jet)
-  #
-  #       # optional image information
-  #       m.drawparallels(np.arange(-90.,91.,10.))
-  #       m.drawmeridians(np.arange(-180.,181.,10.))
-  #       m.drawcoastlines()
-  #
-  #       #plt.show()
-  #       fig.savefig(pfile)
-  #       plt.clr()
-
-         #img = toimage(predict[0,:,:,0])
-         img.save(predictfile)
     except:
-      pass
+      logger.error(sys.exc_info())
 
-
-#CHANGEME -- model to use
-#model_name = "cwb_tversky_rms_563603"
-#model_name = "cwb_tversky_norm_512_rms_592194"
-#model_name = "cwb_block_512_tversky_rms_603554"
-#model_name = "cwb_block_lead_512_tversky_rms_861028"
-#model_name = "ci_cwb_hvd_bce_rms_e5_1053947"
-#model_name = "cwb_block_512_tversky_rms_603554"
-#model_name = "cwbci_dice_rms_4_1971078"
-#model_name = "seg_nf10_rms_focal_b235_159739"
-#model_name = "cwb_nf20_rms_bce_b046_lr8e5_e150_d5_nf32_fixed_resnet_bc4_726151"
-#model_name = "cwb_do20_rms_bcedice_b640_lr8e5_e250_d5_nf32_bc6_717694"
-#model_name = "cwb_l90_nf10_rms_bcedice_b40_lr8e5_e150_d6_nf32_bc8_724434"
-#model_name = "cwb_nf20_rms_tversky_b235_lr8e5_e150_d6_nf32_bc6_743174"
-model_name = "cwb_l90_nf20_rms_tversky_b235_lr8e5_e150_d6_nf32_bc6_744242"
-model_name = "cwb_l90_nf20_rms_dice_b235_lr8e5_e150_d6_nf32_bc6_752857"
 
 def main():
 
